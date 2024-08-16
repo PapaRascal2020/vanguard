@@ -19,13 +19,32 @@ services:
         environment:
             - APP_ENV=${APP_ENV:-production}
             - APP_DEBUG=${APP_DEBUG:-false}
+            - APP_KEY=${APP_KEY}
+            - APP_URL=${APP_URL:-http://localhost}
+            - SSH_PASSPHRASE=${SSH_PASSPHRASE}
+            - LOG_LEVEL=${LOG_LEVEL:-error}
             - DB_CONNECTION=pgsql
             - DB_HOST=postgres
             - DB_PORT=5432
             - DB_DATABASE=${DB_DATABASE:-vanguard}
             - DB_USERNAME=${DB_USERNAME:-postgres}
+            - DB_PASSWORD=${DB_PASSWORD:-password}
             - REDIS_HOST=redis
             - REDIS_PORT=6379
+            - REDIS_PASSWORD=${REDIS_PASSWORD:-null}
+            - REVERB_APP_KEY=${REVERB_APP_KEY:-default_reverb_app_key}
+            - REVERB_APP_SECRET=${REVERB_APP_SECRET:-default_reverb_app_secret}
+            - REVERB_HOST=${REVERB_HOST:-reverb}
+            - REVERB_PORT=${REVERB_PORT:-8080}
+            - REVERB_SCHEME=${REVERB_SCHEME:-https}
+            - REVERB_SERVER_HOST=${REVERB_SERVER_HOST:-0.0.0.0}
+            - REVERB_SERVER_PORT=${REVERB_SERVER_PORT:-8080}
+            - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+            - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+            - GITLAB_CLIENT_ID=${GITLAB_CLIENT_ID:-}
+            - GITLAB_CLIENT_SECRET=${GITLAB_CLIENT_SECRET:-}
+            - ENABLE_DEVICE_AUTH_ENDPOINT=${ENABLE_DEVICE_AUTH_ENDPOINT:-false}
+            - USER_REGISTRATION_ENABLED=${USER_REGISTRATION_ENABLED:-true}
         env_file:
             - .env
 
@@ -53,7 +72,7 @@ services:
         environment:
             - POSTGRES_DB=${DB_DATABASE:-vanguard}
             - POSTGRES_USER=${DB_USERNAME:-postgres}
-            - POSTGRES_PASSWORD=${DB_PASSWORD}
+            - POSTGRES_PASSWORD=${DB_PASSWORD:-password}
         volumes:
             - dbdata:/var/lib/postgresql/data
         networks:

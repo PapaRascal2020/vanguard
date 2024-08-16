@@ -35,6 +35,11 @@ sed -i "s#DB_PASSWORD=.*#DB_PASSWORD=${DB_PASSWORD}#" .env
 sed -i "s#APP_KEY=.*#APP_KEY=${APP_KEY}#" .env
 sed -i "s#SSH_PASSPHRASE=.*#SSH_PASSPHRASE=${SSH_PASSPHRASE}#" .env
 
+# Update REVERB keys
+sed -i "s#REVERB_APP_KEY=.*#REVERB_APP_KEY=${REVERB_APP_KEY:-default_reverb_app_key}#" .env
+sed -i "s#REVERB_APP_SECRET=.*#REVERB_APP_SECRET=${REVERB_APP_SECRET:-default_reverb_app_secret}#" .env
+sed -i "s#VITE_REVERB_APP_KEY=.*#VITE_REVERB_APP_KEY=\"${REVERB_APP_KEY:-default_reverb_app_key}\"#" .env
+
 # Forcefully set Redis values
 sed -i '/^### CACHE ###/,/^$/c\
 ### CACHE ###\
