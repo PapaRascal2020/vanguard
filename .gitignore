@@ -20,3 +20,6 @@ yarn-error.log
 /.vscode
 bump_version.log
 /storage/rector/cache
+.composer
+.npm
+.config
