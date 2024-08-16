@@ -8,11 +8,6 @@ check_status() {
     fi
 }
 
-# Function to generate a secure random passphrase
-generate_secure_passphrase() {
-    tr -dc 'A-Za-z0-9!"#$%&'\''()*+,-./:;<=>?@[\]^_`{|}~' </dev/urandom | head -c 32
-}
-
 # Wait for the database to be ready
 until pg_isready -h ${DB_HOST} -U ${DB_USERNAME} -d ${DB_DATABASE}
 do
@@ -36,23 +31,8 @@ sed -i "s#DB_HOST=.*#DB_HOST=${DB_HOST:-postgres}#" .env
 sed -i "s#DB_PORT=.*#DB_PORT=${DB_PORT:-5432}#" .env
 sed -i "s#DB_DATABASE=.*#DB_DATABASE=${DB_DATABASE:-vanguard}#" .env
 sed -i "s#DB_USERNAME=.*#DB_USERNAME=${DB_USERNAME:-postgres}#" .env
-sed -i "s#DB_PASSWORD=.*#DB_PASSWORD=${DB_PASSWORD:-password}#" .env
-sed -i "s#MAIL_MAILER=.*#MAIL_MAILER=${MAIL_MAILER:-smtp}#" .env
-sed -i "s#MAIL_HOST=.*#MAIL_HOST=${MAIL_HOST:-mailhog}#" .env
-sed -i "s#MAIL_PORT=.*#MAIL_PORT=${MAIL_PORT:-1025}#" .env
-sed -i "s#MAIL_USERNAME=.*#MAIL_USERNAME=${MAIL_USERNAME:-null}#" .env
-sed -i "s#MAIL_PASSWORD=.*#MAIL_PASSWORD=${MAIL_PASSWORD:-null}#" .env
-sed -i "s#MAIL_FROM_ADDRESS=.*#MAIL_FROM_ADDRESS=${MAIL_FROM_ADDRESS:-hello@vanguard.test}#" .env
-sed -i "s#HORIZON_TOKEN=.*#HORIZON_TOKEN=${HORIZON_TOKEN}#" .env
-sed -i "s#FLARE_KEY=.*#FLARE_KEY=${FLARE_KEY:-hPSaRi0s1xCBddUYHsFjjUwTDVHAKn5m}#" .env
-sed -i "s#ADMIN_EMAIL_ADDRESSES=.*#ADMIN_EMAIL_ADDRESSES=${ADMIN_EMAIL_ADDRESSES}#" .env
-sed -i "s#ENABLE_DEVICE_AUTH_ENDPOINT=.*#ENABLE_DEVICE_AUTH_ENDPOINT=${ENABLE_DEVICE_AUTH_ENDPOINT:-false}#" .env
-sed -i "s#USER_REGISTRATION_ENABLED=.*#USER_REGISTRATION_ENABLED=${USER_REGISTRATION_ENABLED:-true}#" .env
-
-# Generate and set a secure SSH_PASSPHRASE if not set or if it's the default value
-if [ -z "${SSH_PASSPHRASE}" ] || [ "${SSH_PASSPHRASE}" = "123456789" ]; then
-    SSH_PASSPHRASE=$(generate_secure_passphrase)
-fi
+sed -i "s#DB_PASSWORD=.*#DB_PASSWORD=${DB_PASSWORD}#" .env
+sed -i "s#APP_KEY=.*#APP_KEY=${APP_KEY}#" .env
 sed -i "s#SSH_PASSPHRASE=.*#SSH_PASSPHRASE=${SSH_PASSPHRASE}#" .env
 
 # Forcefully set Redis values
@@ -63,26 +43,11 @@ REDIS_PORT='"${REDIS_PORT:-6379}"'\
 REDIS_PASSWORD='"${REDIS_PASSWORD:-null}"'\
 ' .env
 
-# Add essential Reverb environment variables
-sed -i "s#REVERB_APP_ID=.*#REVERB_APP_ID=${REVERB_APP_ID:-your-app-id}#" .env
-sed -i "s#REVERB_APP_KEY=.*#REVERB_APP_KEY=${REVERB_APP_KEY:-set-a-key-here}#" .env
-sed -i "s#REVERB_APP_SECRET=.*#REVERB_APP_SECRET=${REVERB_APP_SECRET:-set-a-secret}#" .env
-sed -i "s#REVERB_HOST=.*#REVERB_HOST=${REVERB_HOST:-localhost}#" .env
-sed -i "s#BROADCAST_CONNECTION=.*#BROADCAST_CONNECTION=reverb#" .env
-
 check_status "Updating .env file"
-
-# Always generate a new application key
-php artisan key:generate --force
-check_status "Generating application key"
-
-# Generate ssh key
-php artisan vanguard:generate-ssh-key
-check_status "Generating SSH key"
 
 # Install Composer dependencies
 echo "Installing Composer dependencies..."
-composer install --no-interaction --no-plugins --no-scripts
+composer install --no-interaction --no-plugins --no-scripts --optimize-autoloader --no-dev
 check_status "Composer install"
 
 # Run database migrations
@@ -92,7 +57,7 @@ check_status "Database migration"
 
 # Install npm dependencies
 echo "Installing npm dependencies..."
-npm ci
+npm ci --only=production
 check_status "npm install"
 
 # Build front-end assets
