@@ -7,15 +7,13 @@ namespace App\Providers;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
 use App\Services\GreetingService;
-use Flare;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\Sanctum;
 
 /**
  * Core application service provider.
- * Handles service registration and authorization setup.
+ * Handles service registration, authorization setup, and feature flags.
  */
 class AppServiceProvider extends ServiceProvider
 {
@@ -24,7 +22,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->registerFlareVersion();
         $this->registerGreetingService();
     }
 
@@ -36,22 +33,6 @@ class AppServiceProvider extends ServiceProvider
         Sanctum::usePersonalAccessTokenModel(PersonalAccessToken::class);
 
         $this->defineGates();
-    }
-
-    /**
-     * Set up version determination for Flare.
-     */
-    private function registerFlareVersion(): void
-    {
-        Flare::determineVersionUsing(function () {
-            $versionFile = base_path('VERSION');
-
-            if (! File::exists($versionFile)) {
-                return __('Unknown');
-            }
-
-            return str_replace("\n", '', File::get($versionFile));
-        });
     }
 
     /**

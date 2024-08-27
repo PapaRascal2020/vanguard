@@ -6,6 +6,7 @@ use App\Jobs\BackupTasks\SendDiscordNotificationJob;
 use App\Jobs\BackupTasks\SendPushoverNotificationJob;
 use App\Jobs\BackupTasks\SendSlackNotificationJob;
 use App\Jobs\BackupTasks\SendTeamsNotificationJob;
+use App\Jobs\BackupTasks\SendTelegramNotificationJob;
 use App\Jobs\RunDatabaseBackupTaskJob;
 use App\Jobs\RunFileBackupTaskJob;
 use App\Mail\BackupTasks\OutputMail;
@@ -15,8 +16,12 @@ use App\Models\BackupTaskLog;
 use App\Models\NotificationStream;
 use App\Models\RemoteServer;
 use App\Models\Tag;
+use App\Models\Traits\ComposesTelegramNotification;
 use App\Models\User;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
+
+uses(ComposesTelegramNotification::class);
 
 it('sets the last run at timestamp', function (): void {
 
@@ -391,6 +396,28 @@ it('does not run the database job if a task is already running on the same remot
     Queue::assertNotPushed(RunDatabaseBackupTaskJob::class);
 });
 
+it('does not run database backup task if the user account has been disabled', function (): void {
+    Queue::fake();
+    $disabledAccount = User::factory()->create(['account_disabled_at' => now()]);
+    $remoteServer = RemoteServer::factory()->create(['user_id' => $disabledAccount->id]);
+    $task = BackupTask::factory()->paused()->create(['status' => 'ready', 'type' => 'database', 'remote_server_id' => $remoteServer->id, 'user_id' => $disabledAccount->id]);
+
+    $task->run();
+
+    Queue::assertNotPushed(RunDatabaseBackupTaskJob::class);
+});
+
+it('does not run file backup task if the user account has been disabled', function (): void {
+    Queue::fake();
+    $disabledAccount = User::factory()->create(['account_disabled_at' => now()]);
+    $remoteServer = RemoteServer::factory()->create(['user_id' => $disabledAccount->id]);
+    $task = BackupTask::factory()->paused()->create(['status' => 'ready', 'type' => 'files', 'remote_server_id' => $remoteServer->id, 'user_id' => $disabledAccount->id]);
+
+    $task->run();
+
+    Queue::assertNotPushed(RunFileBackupTaskJob::class);
+});
+
 it('returns true if the type is files', function (): void {
 
     $task = BackupTask::factory()->create(['type' => 'files']);
@@ -657,6 +684,21 @@ it('returns false if there is no notification stream pushover set', function ():
     expect($task->hasPushoverNotification())->toBeFalse();
 });
 
+it('returns true if there is a notification stream telegram set', function (): void {
+    $task = BackupTask::factory()->create();
+    $stream = NotificationStream::factory()->telegram()->create();
+
+    $task->notificationStreams()->attach($stream);
+
+    expect($task->hasTelegramNotification())->toBeTrue();
+});
+
+it('returns false if there is no notification stream telegram set', function (): void {
+    $task = BackupTask::factory()->create();
+
+    expect($task->hasEmailNotification())->toBeFalse();
+});
+
 it('queues up a teams notification job if a teams notification has been set', function (): void {
 
     Queue::fake();
@@ -804,6 +846,32 @@ it('does not queue up an email notification job if an email notification has not
     Mail::assertNotQueued(OutputMail::class);
 });
 
+it('queues up a telegram notification job if a telegram notification has been set', function (): void {
+
+    Queue::fake();
+
+    $task = BackupTask::factory()->create();
+    $stream = NotificationStream::factory()->telegram()->create();
+    $task->notificationStreams()->attach($stream);
+
+    BackupTaskLog::factory()->create(['backup_task_id' => $task->id]);
+
+    $task->sendNotifications();
+
+    Queue::assertPushed(SendTelegramNotificationJob::class);
+});
+
+it('does not queue up a telegram notification job if a telegram notification has not been set', function (): void {
+
+    Queue::fake();
+
+    $task = BackupTask::factory()->create();
+
+    $task->sendNotifications();
+
+    Queue::assertNotPushed(SendTelegramNotificationJob::class);
+});
+
 it('can send multiple types of notifications simultaneously', function (): void {
     Queue::fake();
     Mail::fake();
@@ -824,6 +892,32 @@ it('can send multiple types of notifications simultaneously', function (): void 
     Queue::assertPushed(SendSlackNotificationJob::class);
     Queue::assertPushed(SendTeamsNotificationJob::class);
     Mail::assertQueued(OutputMail::class);
+});
+
+it('does not send multiple types of notifications simultaneously if the user has quiet mode enabled', function (): void {
+    Queue::fake();
+    Mail::fake();
+
+    $user = User::factory()->quietMode()->create();
+
+    $task = BackupTask::factory()->create(['user_id' => $user->id]);
+    $discordStream = NotificationStream::factory()->discord()->create(['user_id' => $user->id]);
+    $slackStream = NotificationStream::factory()->slack()->create(['user_id' => $user->id]);
+    $teamsStream = NotificationStream::factory()->teams()->create(['user_id' => $user->id]);
+    $emailStream = NotificationStream::factory()->email()->create(['user_id' => $user->id]);
+
+    $task->notificationStreams()->attach([$discordStream->id, $slackStream->id, $emailStream->id, $teamsStream->id]);
+
+    BackupTaskLog::factory()->create(['backup_task_id' => $task->id]);
+
+    $task->sendNotifications();
+
+    Queue::assertNotPushed(SendDiscordNotificationJob::class);
+    Queue::assertNotPushed(SendSlackNotificationJob::class);
+    Queue::assertNotPushed(SendTeamsNotificationJob::class);
+    Mail::assertNotQueued(OutputMail::class);
+
+    $this->assertTrue($user->hasQuietMode());
 });
 
 it('sends a discord webhook successfully', function (): void {
@@ -934,6 +1028,52 @@ it('throws an exception when Pushover notification fails', function (): void {
 
     expect(fn () => $task->sendPushoverNotification($log, $pushoverToken, $userToken))
         ->toThrow(RuntimeException::class, 'Pushover notification failed: Error');
+});
+
+it('sends a Telegram notification successfully', function (): void {
+    $botToken = 'abc123';
+    $userToken = 'def456';
+
+    Config::set('services.telegram.bot_token', $botToken);
+
+    $task = BackupTask::factory()->create();
+    $log = BackupTaskLog::factory()->create(['backup_task_id' => $task->id]);
+
+    Http::fake([
+        "https://api.telegram.org/bot{$botToken}/sendMessage" => Http::response('', 200),
+    ]);
+
+    $task->sendTelegramNotification($log, $userToken);
+
+    Http::assertSent(function (Request $request) use ($botToken, $userToken, $task, $log): bool {
+        return $request->url() === "https://api.telegram.org/bot{$botToken}/sendMessage" &&
+            $request['text'] === $this->composeTelegramNotificationText($task, $log) &&
+            $request['chat_id'] === $userToken &&
+            $request['parse_mode'] === 'HTML';
+    });
+});
+
+it('throws an exception when Telegram notification fails', function (): void {
+    $task = BackupTask::factory()->create();
+    $log = BackupTaskLog::factory()->create(['backup_task_id' => $task->id]);
+
+    Config::set('services.telegram.bot_token', '456');
+
+    Http::fake([
+        $this->getTelegramUrl() => Http::response('Error', 500),
+    ]);
+
+    expect(fn () => $task->sendTelegramNotification($log, 'fakeToken'))
+        ->toThrow(RuntimeException::class, 'Telegram notification failed: Error');
+});
+
+it('throws an exception when Telegram bot token missing', function (): void {
+    config()->set('services.telegram.bot_token', null);
+    $task = BackupTask::factory()->create();
+    $log = BackupTaskLog::factory()->create(['backup_task_id' => $task->id]);
+
+    expect(fn () => $task->sendTelegramNotification($log, 'fakeToken'))
+        ->toThrow(RuntimeException::class, 'Telegram bot token is not configured');
 });
 
 it('sends notifications based on backup task outcome and user preferences', function (): void {

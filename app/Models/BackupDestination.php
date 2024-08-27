@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Log;
+use Motomedialab\SimpleLaravelAudit\Traits\AuditableModel;
 use RuntimeException;
 
 /**
@@ -23,12 +24,15 @@ use RuntimeException;
  */
 class BackupDestination extends Model
 {
+    use AuditableModel;
     /** @use HasFactory<BackupDestinationFactory> */
     use HasFactory;
 
     public const string TYPE_CUSTOM_S3 = 'custom_s3';
     public const string TYPE_S3 = 's3';
     public const string TYPE_LOCAL = 'local';
+
+    public const string TYPE_DO_SPACES = 'digitalocean_spaces';
 
     public const string STATUS_REACHABLE = 'reachable';
     public const string STATUS_UNREACHABLE = 'unreachable';
@@ -66,6 +70,7 @@ class BackupDestination extends Model
             self::TYPE_S3 => 'S3',
             self::TYPE_CUSTOM_S3 => (string) trans('Custom S3'),
             self::TYPE_LOCAL => (string) trans('Local'),
+            self::TYPE_DO_SPACES => (string) trans('DigitalOcean Spaces'),
             default => null,
         };
     }
@@ -75,7 +80,7 @@ class BackupDestination extends Model
      */
     public function isS3Connection(): bool
     {
-        return in_array($this->type, [self::TYPE_S3, self::TYPE_CUSTOM_S3], true);
+        return in_array($this->type, [self::TYPE_S3, self::TYPE_CUSTOM_S3, self::TYPE_DO_SPACES], true);
     }
 
     /**
@@ -93,6 +98,10 @@ class BackupDestination extends Model
     {
         if ($this->type === self::TYPE_CUSTOM_S3 && $this->custom_s3_region === null) {
             return 'us-east-1'; // Default region for custom S3
+        }
+
+        if ($this->type === self::TYPE_DO_SPACES && $this->custom_s3_region === null) {
+            return 'us-east-1'; // Default region for DO S3
         }
 
         return (string) $this->custom_s3_region;
@@ -119,7 +128,7 @@ class BackupDestination extends Model
             ],
         ];
 
-        if ($this->type === self::TYPE_CUSTOM_S3) {
+        if ($this->type === self::TYPE_CUSTOM_S3 || $this->type === self::TYPE_DO_SPACES) {
             $config['endpoint'] = $this->custom_s3_endpoint;
         }
 

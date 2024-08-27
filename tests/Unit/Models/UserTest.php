@@ -140,20 +140,6 @@ test('does not return the count of backup task logs that are associated with the
     $this->assertEquals(0, $user->backupTaskLogCountToday());
 });
 
-test('returns true if can login with github', function (): void {
-
-    $user = User::factory()->create(['github_id' => 1]);
-
-    $this->assertTrue($user->canLoginWithGithub());
-});
-
-test('returns false if can not login with github', function (): void {
-
-    $user = User::factory()->create();
-
-    $this->assertFalse($user->canLoginWithGithub());
-});
-
 test('returns only the users that have opted in for backup task summaries', function (): void {
     $userOne = User::factory()->receivesWeeklySummaries()->create();
     $userTwo = User::factory()->doesNotReceiveWeeklySummaries()->create();
@@ -365,4 +351,95 @@ it('considers codes generated exactly one year ago as not outdated', function ()
     $filteredUsers = User::withOutdatedBackupCodes()->get();
 
     expect($filteredUsers)->toBeEmpty();
+});
+
+it('returns true if quiet mode is enabled', function (): void {
+    $user = User::factory()->quietMode()->create();
+
+    $this->assertTrue($user->hasQuietMode());
+});
+
+it('returns false if quiet mode is disabled', function (): void {
+    $user = User::factory()->create();
+
+    $this->assertFalse($user->hasQuietMode());
+});
+
+it('scopes query to users with quiet mode enabled', function (): void {
+    User::factory()->count(3)->create();
+    User::factory()->count(2)->quietMode()->create();
+
+    $quietUsers = User::withQuietMode()->get();
+
+    expect($quietUsers)->toHaveCount(2)
+        ->each(function ($user): void {
+            expect($user->quiet_until)->not->toBeNull();
+        });
+});
+
+it('does not include users without quiet mode', function (): void {
+    User::factory()->count(3)->create(['quiet_until' => null]);
+    User::factory()->count(2)->quietMode()->create();
+
+    $nonQuietUsers = User::query()->whereNotIn('id', User::withQuietMode()->pluck('id'))->get();
+
+    expect($nonQuietUsers)->toHaveCount(3);
+
+    $nonQuietUsers->each(function ($user): void {
+        expect($user->quiet_until)->toBeNull();
+    });
+});
+
+it('resets a users quiet mode', function (): void {
+    $user = User::factory()->quietMode()->create();
+
+    $user->clearQuietMode();
+
+    $this->assertFalse($user->hasQuietMode());
+});
+
+it('does not reset quiet mode if quiet mode not set', function (): void {
+    $user = User::factory()->create();
+
+    $this->assertFalse($user->hasQuietMode());
+
+    $user->clearQuietMode();
+
+    $this->assertFalse($user->hasQuietMode());
+});
+
+it('returns false if the user account has been disabled', function (): void {
+
+    $user = User::factory()->create();
+
+    $this->assertFalse($user->hasDisabledAccount());
+});
+
+it('returns true if the user account has been disabled', function (): void {
+
+    $user = User::factory()->create(['account_disabled_at' => now()]);
+
+    $this->assertTrue($user->hasDisabledAccount());
+});
+
+it('returns false if the user account has already been disabled', function (): void {
+
+    $user = User::factory()->create(['account_disabled_at' => now()]);
+
+    $this->assertFalse($user->disableUserAccount());
+});
+
+it('returns false if the user account is an admin', function (): void {
+    Config::set('auth.admin_email_addresses', ['admin@email.com']);
+
+    $user = User::factory()->create(['email' => 'admin@email.com', 'account_disabled_at' => null]);
+
+    $this->assertFalse($user->disableUserAccount());
+});
+
+it('returns true if the account has been disabled', function (): void {
+    $user = User::factory()->create(['account_disabled_at' => null]);
+
+    $this->assertTrue($user->disableUserAccount());
+    $this->assertTrue($user->hasDisabledAccount());
 });

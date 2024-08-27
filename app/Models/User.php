@@ -15,8 +15,10 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laragear\TwoFactor\Contracts\TwoFactorAuthenticatable;
 use Laragear\TwoFactor\TwoFactorAuthentication;
+use Laravel\Pennant\Concerns\HasFeatures;
 use Laravel\Sanctum\HasApiTokens;
 use Laravel\Sanctum\NewAccessToken;
+use Motomedialab\SimpleLaravelAudit\Traits\AuditableModel;
 
 /**
  * Represents a user in the system.
@@ -26,10 +28,12 @@ use Laravel\Sanctum\NewAccessToken;
  */
 class User extends Authenticatable implements TwoFactorAuthenticatable
 {
-    use HasApiTokens;
+    use AuditableModel;
 
+    use HasApiTokens;
     /** @use HasFactory<UserFactory> */
     use HasFactory;
+    use HasFeatures;
     use Notifiable;
     use TwoFactorAuthentication;
 
@@ -41,7 +45,6 @@ class User extends Authenticatable implements TwoFactorAuthenticatable
         'email',
         'password',
         'timezone',
-        'github_id',
         'preferred_backup_destination_id',
         'language',
         'gravatar_email',
@@ -169,14 +172,6 @@ class User extends Authenticatable implements TwoFactorAuthenticatable
     }
 
     /**
-     * Check if the user can log in with GitHub.
-     */
-    public function canLoginWithGithub(): bool
-    {
-        return $this->github_id !== null;
-    }
-
-    /**
      * Determine if the user is opted in to receive weekly summaries.
      */
     public function isOptedInForWeeklySummary(): bool
@@ -282,6 +277,73 @@ class User extends Authenticatable implements TwoFactorAuthenticatable
     }
 
     /**
+     *  Returns whether the user has quiet mode enabled.
+     */
+    public function hasQuietMode(): bool
+    {
+        return $this->quiet_until !== null;
+    }
+
+    /**
+     * Scope query to users that have a quiet mode enabled.
+     *
+     * @param  Builder<User>  $builder
+     * @return Builder<User>
+     */
+    public function scopeWithQuietMode(Builder $builder): Builder
+    {
+        return $builder->whereNotNull('quiet_until');
+    }
+
+    /**
+     *  It clears a user's quiet mode if set.
+     */
+    public function clearQuietMode(): void
+    {
+        if (! $this->hasQuietMode()) {
+            return;
+        }
+
+        $this->forceFill(['quiet_until' => null])->save();
+    }
+
+    /**
+     * Get the user's external service connections.
+     *
+     * This relationship retrieves all connections (like GitHub, GitLab)
+     * associated with the user.
+     *
+     * @return HasMany<UserConnection> */
+    public function connections(): HasMany
+    {
+        return $this->hasMany(UserConnection::class);
+    }
+
+    /**
+     *  Returns whether the user's account has been disabled.
+     */
+    public function hasDisabledAccount(): bool
+    {
+        return $this->account_disabled_at !== null;
+    }
+
+    /**
+     *  It disables the user's account.
+     */
+    public function disableUserAccount(): bool
+    {
+        if ($this->hasDisabledAccount()) {
+            return false;
+        }
+
+        if ($this->isAdmin()) {
+            return false;
+        }
+
+        return $this->forceFill(['account_disabled_at' => now()])->save();
+    }
+
+    /**
      * Get the casts array.
      *
      * @return array<string, string>
@@ -293,6 +355,8 @@ class User extends Authenticatable implements TwoFactorAuthenticatable
             'password' => 'hashed',
             'weekly_summary_opt_in_at' => 'datetime',
             'last_two_factor_at' => 'datetime',
+            'quiet_until' => 'datetime',
+            'account_disabled_at' => 'datetime',
         ];
     }
 

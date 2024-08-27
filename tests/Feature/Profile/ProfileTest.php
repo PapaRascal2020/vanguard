@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Models\BackupDestination;
+use App\Models\BackupTask;
+use App\Models\RemoteServer;
 use App\Models\User;
 use Livewire\Volt\Volt;
 
@@ -103,6 +105,7 @@ test('user can delete their account', function (): void {
     $this->actingAs($user);
 
     $component = Volt::test('profile.delete-user-form')
+        ->set('currentView', 'final-confirmation')
         ->set('password', 'password')
         ->call('deleteUser');
 
@@ -120,6 +123,7 @@ test('correct password must be provided to delete account', function (): void {
     $this->actingAs($user);
 
     $component = Volt::test('profile.delete-user-form')
+        ->set('currentView', 'final-confirmation')
         ->set('password', 'wrong-password')
         ->call('deleteUser');
 
@@ -128,6 +132,77 @@ test('correct password must be provided to delete account', function (): void {
         ->assertNoRedirect();
 
     $this->assertNotNull($user->fresh());
+});
+
+test('user cannot proceed to eligibility check if they have no password', function (): void {
+    $user = User::factory()->create(['password' => null]);
+
+    $this->actingAs($user);
+
+    $testable = Volt::test('profile.delete-user-form');
+
+    $this->assertFalse($testable->get('hasPassword'));
+});
+
+test('user can proceed to eligibility check if they have a password', function (): void {
+    $user = User::factory()->create();
+
+    $this->actingAs($user);
+
+    $component = Volt::test('profile.delete-user-form')
+        ->call('proceedToEligibilityCheck');
+
+    $this->assertTrue($component->get('hasPassword'));
+    $this->assertEquals('eligibility', $component->get('currentView'));
+});
+
+test('user can proceed to final confirmation if eligible', function (): void {
+    $user = User::factory()->create();
+
+    $this->actingAs($user);
+
+    $component = Volt::test('profile.delete-user-form')
+        ->set('isEligible', true)
+        ->call('proceedToFinalConfirmation');
+
+    $this->assertEquals('final-confirmation', $component->get('currentView'));
+});
+
+test('user cannot proceed to final confirmation if not eligible', function (): void {
+    $user = User::factory()->create();
+
+    $this->actingAs($user);
+
+    $component = Volt::test('profile.delete-user-form')
+        ->set('isEligible', false)
+        ->call('proceedToFinalConfirmation');
+
+    $this->assertNotEquals('final-confirmation', $component->get('currentView'));
+});
+
+test('account summary is generated correctly', function (): void {
+    $user = User::factory()->create();
+
+    BackupTask::factory()->create(['user_id' => $user->id]);
+    RemoteServer::factory()->create(['user_id' => $user->id]);
+    BackupDestination::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    $testable = Volt::test('profile.delete-user-form');
+
+    $accountSummary = $testable->get('accountSummary');
+
+    expect($accountSummary)->toHaveCount(3);
+
+    foreach (['backupTasks', 'remoteServers', 'backupDestinations'] as $key) {
+        expect($accountSummary[$key])->toHaveKeys(['count', 'label', 'icon', 'description'])
+            ->and($accountSummary[$key]['count'])->toBe(1);
+    }
+
+    expect($accountSummary['backupTasks']['label'])->toBe('Backup Tasks')
+        ->and($accountSummary['remoteServers']['label'])->toBe('Remote Servers')
+        ->and($accountSummary['backupDestinations']['label'])->toBe('Backup Destinations');
 });
 
 test('the timezone must be valid', function (): void {

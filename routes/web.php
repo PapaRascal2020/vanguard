@@ -12,13 +12,19 @@ use App\Livewire\NotificationStreams\Forms\CreateNotificationStream;
 use App\Livewire\NotificationStreams\Forms\UpdateNotificationStream;
 use App\Livewire\NotificationStreams\Index as NotificationStreamIndex;
 use App\Livewire\Profile\APIPage;
+use App\Livewire\Profile\AuditLogPage;
+use App\Livewire\Profile\ConnectionsPage;
+use App\Livewire\Profile\ExperimentsPage;
+use App\Livewire\Profile\HelpPage;
 use App\Livewire\Profile\MFAPage;
+use App\Livewire\Profile\QuietModePage;
+use App\Livewire\Profile\SessionsPage;
 use App\Livewire\StatisticsPage;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/overview');
 
-Route::middleware([UserLanguage::class, 'auth', 'two-factor'])->group(function () {
+Route::middleware([UserLanguage::class, 'auth', 'two-factor', 'account-disabled'])->group(function () {
     Route::get('overview', OverviewController::class)->name('overview');
 
     Route::view('profile', 'profile')->name('profile');
@@ -67,6 +73,12 @@ Route::middleware([UserLanguage::class, 'auth', 'two-factor'])->group(function (
 
     Route::get('profile/api', APIPage::class)->name('profile.api');
     Route::get('profile/mfa', MFAPage::class)->name('profile.mfa');
+    Route::get('profile/sessions', SessionsPage::class)->name('profile.sessions');
+    Route::get('profile/experiments', ExperimentsPage::class)->name('profile.experiments');
+    Route::get('profile/quiet-mode', QuietModePage::class)->name('profile.quiet-mode');
+    Route::get('profile/connections', ConnectionsPage::class)->name('profile.connections');
+    Route::get('profile/help', HelpPage::class)->name('profile.help');
+    Route::get('profile/audit-logs', AuditLogPage::class)->name('profile.audit-logs');
 });
 
 require __DIR__ . '/auth.php';
